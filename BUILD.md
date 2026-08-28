@@ -1,51 +1,36 @@
 # Building from Source
 
-This guide explains how to build Windows wheels for PyKEP and PyGMO from source, reproducing the exact binaries provided in this repository.
+This guide explains how to build Windows wheels for PyKEP and PyGMO from source, reproducing the exact binaries shipped in this repository.
 
----
-
-##  Prerequisites
+## Prerequisites
 
 ### Required Software
 
 | Tool | Version | Notes |
 |------|---------|-------|
-| **Visual Studio Build Tools** | 2026 (MSVC v19.51) | Must include "Desktop development with C++" workload; **MSVC build tools for x64/x86** must be  checked|
-| **CMake** | ≥ 4.2.0 | Recommended: [winlibs](https://winlibs.com/) bundle, or `winget install Kitware.CMake` |
+| **Visual Studio Build Tools** | 2026 (MSVC v19.51) | Must include "Desktop development with C++" workload; **MSVC build tools for x64/x86** must be checked |
+| **CMake** | ≥ 4.2.0 | Use the **winlibs build of CMake by full path** (e.g. `D:\path\to\winlibs\bin\cmake.exe`). The project's own `kep3_devel.yml` pins `cmake>=3.28,<3.31` (3.30.5 in the env), which does **not** know the `Visual Studio 18 2026` generator; adding winlibs to `PATH` alone may still let the conda env's cmake win, so call the full path directly |
 | **Miniconda** | Latest | For managing C++ dependencies (`heyoka`, `Boost`, `fmt`, `SPICE`, etc.) |
 | **Python** | 3.14 (64-bit) | Target Python version for the wheels |
 | **Git** | Latest | For cloning repositories |
 
 ### Verify Your Environment
 
-Open **"x64 Native Tools Command Prompt for VS 2026"** and run:
+Configuring/building does **not** require `cl` on `PATH` (CMake's VS generator locates MSVC itself); only command-line tools such as `cl`/`dumpbin` need the VS environment (use `cmd /c "call vcvars64.bat && ..."`). A plain PowerShell/terminal is enough for every step in this document:
 
-```cmd
-cl          # Should show Microsoft C/C++ compiler version
-cmake --version   # Should be ≥ 4.2.0
-conda --version   # Should be installed
-python --version  # Should be 3.14.x (64-bit)
+```powershell
+& "$cmake_path" --version   # should be ≥ 4.2.0
+conda --version
+python --version   # 3.14.x (64-bit)
 ```
-
-#### If `cl` is not recognized
-
-The MSVC compiler component may **not installed by default** with Build Tools. To fix:
-
-1. Open Visual Studio Installer → Modify → **"Visual Studio Build Tools 2026"**
-2. Switch to **"Individual components"** tab
-3. Search for **"MSVC"** and check:
-   - **"MSVC build tools for x64/x86(Latest)"**
-4. Click **Modify** and wait for installation
-
-If `cmake` is too old, download a newer version (e.g., from [winlibs](https://winlibs.com/)) and add it to your `PATH` temporarily:
-
-```cmd
-set PATH=D:\path\to\winlibs\bin;%PATH%
-```
+> **Path convention**: `cmake_path` in this document is a placeholder for the **full path** to the winlibs build of CMake. Replace it with your own actual path, for example `D:\path\to\winlibs\bin\cmake.exe` . It is recommended to define it once at the start of any PowerShell session:
+> ```powershell
+> $cmake_path = "D:\path\to\winlibs\bin\cmake.exe"   # replace with your actual path
+> ```
 
 ---
 
-##  Step 1: Create a Conda Environment with All Dependencies
+## Step 1: Create a Conda Environment with All Dependencies
 
 The official PyKEP repository provides a `kep3_devel.yml` file that lists all required C++ libraries:
 
@@ -75,47 +60,54 @@ If not present, install it manually:
 conda install -c conda-forge cspice
 ```
 
+Also install the packaging tools, otherwise Step 4's `python setup.py bdist_wheel` fails with `No module named 'setuptools'`:
+
+```cmd
+pip install setuptools wheel
+```
+
 ---
 
-##  Step 2: Build PyKEP
+## Step 2: Build PyKEP
 
 ### 2.1 Configure CMake
 
-```cmd
+```powershell
 cd pykep
-rmdir /s /q build
-mkdir build
+Remove-Item -Recurse -Force build -ErrorAction SilentlyContinue
+New-Item -ItemType Directory -Path build | Out-Null
 cd build
 
-cmake .. -G "Visual Studio 18 2026" -A x64 -DCMAKE_BUILD_TYPE=Release -Dkep3_BUILD_PYTHON_BINDINGS=ON -DCMAKE_PREFIX_PATH="%CONDA_PREFIX%\Library"
+& "$cmake_path" .. -G "Visual Studio 18 2026" -A x64 -DCMAKE_BUILD_TYPE=Release -Dkep3_BUILD_PYTHON_BINDINGS=ON -DCMAKE_PREFIX_PATH="%CONDA_PREFIX%\Library"
 ```
 
-> **Important**: `-DCMAKE_PREFIX_PATH` tells CMake to look for dependencies (Boost, fmt, heyoka, SPICE, etc.) inside the Conda environment's `Library` folder.
+> **Important**: `-DCMAKE_PREFIX_PATH` tells CMake to look for dependencies (Boost, heyoka, fmt, SPICE, etc.) inside the Conda environment's `Library` folder. `kep3_BUILD_PYTHON_BINDINGS` is a real option of pykep (the summary should show `python=ON` and `build_kep3=ON`).
 
 If SPICE libraries are not found automatically, manually specify them:
 
 ```cmd
-cmake .. -G "Visual Studio 18 2026" -A x64 -DCMAKE_BUILD_TYPE=Release -Dkep3_BUILD_PYTHON_BINDINGS=ON -DCMAKE_PREFIX_PATH="%CONDA_PREFIX%\Library" -Dcspice_DIR="%CONDA_PREFIX%\Library\lib\cmake\cspice" -DGMP_INCLUDE_DIR="%CONDA_PREFIX%\Library\include" -DGMP_LIBRARY="%CONDA_PREFIX%\Library\lib\gmp.lib"
+& "$cmake_path" .. -G "Visual Studio 18 2026" -A x64 -DCMAKE_BUILD_TYPE=Release -Dkep3_BUILD_PYTHON_BINDINGS=ON -DCMAKE_PREFIX_PATH="%CONDA_PREFIX%\Library" -Dcspice_DIR="%CONDA_PREFIX%\Library\lib\cmake\cspice" -DGMP_INCLUDE_DIR="%CONDA_PREFIX%\Library\include" -DGMP_LIBRARY="%CONDA_PREFIX%\Library\lib\gmp.lib"
 ```
-
-Check the output summary – it should show `python=ON` and `build_kep3=ON`.
 
 ### 2.2 Compile
 
 ```cmd
-cmake --build . --config Release --parallel
+& "$cmake_path" --build . --config Release --parallel
 ```
 
 This produces:
-- `Release/kep3.dll` – the C++ core library
+
+- `Release/kep3.dll` – the C++ core library (the native core of pykep, to be copied into the package later)
 - `pykep/Release/core.cp314-win_amd64.pyd` – the Python extension module
 - `pykep/_version.py` – the version file
 
-> **Note**: You may see a warning `The vcpkg manifest was disabled...` – this is harmless and can be ignored.
+> `_version.py` is directly generated by `configure_file` **in the source directory `pykep\_version.py`** (not in the build directory) – so it does **not** need to be copied afterwards. (Note that pygmo, by contrast, generates it in the build directory; see 3.4.)
+
+> **Note**: You may see a warning `The vcpkg manifest was disabled...` – it is harmless and can be ignored.
 
 ### 2.3 Prepare the Python Package
 
-The compiled `.pyd`, `_version.py`, and their dependencies need to be placed into the source `pykep/` folder.
+The compiled `.pyd` and its DLL dependencies need to be placed into the source `pykep/` folder.
 
 Copy the `.pyd` file:
 
@@ -123,40 +115,51 @@ Copy the `.pyd` file:
 copy pykep\Release\core.cp314-win_amd64.pyd ..\pykep\core.pyd
 ```
 
-Copy the version file:
-
-```cmd
-copy pykep\_version.py ..\pykep\
-```
-
-Copy the required DLLs (from `%CONDA_PREFIX%\Library\bin`) into a `lib` subfolder:
+Copy the DLLs into a `lib` subfolder:
 
 ```cmd
 mkdir ..\pykep\lib
-copy %CONDA_PREFIX%\Library\bin\kep3.dll ..\pykep\lib\
-copy %CONDA_PREFIX%\Library\bin\heyoka.dll ..\pykep\lib\
-copy %CONDA_PREFIX%\Library\bin\boost_serialization*.dll ..\pykep\lib\
-copy %CONDA_PREFIX%\Library\bin\fmt*.dll ..\pykep\lib\
-copy %CONDA_PREFIX%\Library\bin\spdlog*.dll ..\pykep\lib\
-copy %CONDA_PREFIX%\Library\bin\tbb*.dll ..\pykep\lib\
-# ... and any other DLLs reported by dumpbin /dependents on core.pyd
 ```
 
-> **To obtain a minimal set of DLLs**: Use the "file locking" method – import `pykep` in a Python session and delete all DLLs in `lib` that are not locked (PermissionError). See the troubleshooting section below.
+You need to copy about 21 DLLs. **`kep3.dll` lives in `build\Release\`** (a build product), **not** in `%CONDA_PREFIX%\Library\bin`. Complete list (matching the `lib\` of the pykep wheel shipped by this repository, consistent with the dumpbin dependency chain):
+
+```cmd
+copy build\Release\kep3.dll ..\pykep\lib\
+copy %CONDA_PREFIX%\Library\bin\heyoka.dll ..\pykep\lib\
+copy %CONDA_PREFIX%\Library\bin\boost_serialization.dll ..\pykep\lib\
+copy %CONDA_PREFIX%\Library\bin\fmt.dll ..\pykep\lib\
+copy %CONDA_PREFIX%\Library\bin\spdlog.dll ..\pykep\lib\
+copy %CONDA_PREFIX%\Library\bin\tbb12.dll ..\pykep\lib\
+copy %CONDA_PREFIX%\Library\bin\mp++.dll ..\pykep\lib\
+copy %CONDA_PREFIX%\Library\bin\sleef.dll ..\pykep\lib\
+copy %CONDA_PREFIX%\Library\bin\flint-21.dll ..\pykep\lib\
+copy %CONDA_PREFIX%\Library\bin\libgmp-10.dll ..\pykep\lib\
+copy %CONDA_PREFIX%\Library\bin\libmpc-3.dll ..\pykep\lib\
+copy %CONDA_PREFIX%\Library\bin\libmpfr-6.dll ..\pykep\lib\
+copy %CONDA_PREFIX%\Library\bin\boost_charconv.dll ..\pykep\lib\
+copy %CONDA_PREFIX%\Library\bin\sqlite3.dll ..\pykep\lib\
+copy %CONDA_PREFIX%\Library\bin\zlib.dll ..\pykep\lib\
+copy %CONDA_PREFIX%\Library\bin\zstd.dll ..\pykep\lib\
+copy %CONDA_PREFIX%\Library\bin\mkl_intel_thread.3.dll ..\pykep\lib\
+copy %CONDA_PREFIX%\Library\bin\libcrypto-3-x64.dll ..\pykep\lib\
+copy %CONDA_PREFIX%\Library\bin\libssl-3-x64.dll ..\pykep\lib\
+copy %CONDA_PREFIX%\Library\bin\libgcc_s_seh-1.dll ..\pykep\lib\
+copy %CONDA_PREFIX%\Library\bin\libwinpthread-1.dll ..\pykep\lib\
+```
+
+> **About `mkl_intel_thread.3.dll`**: this is a direct PE dependency of `kep3.dll` (pykep's own dependency, unrelated to pygmo) and must be copied. However, it itself delay-loads `mkl_core.3.dll` + `libiomp5md.dll` — which are **not** in the pykep wheel: `import` and the official **89/89 test suite pass with no anomaly** (the tests never trigger the delay-load), but if user code calls a routine that falls through to `mkl_core` (some linear-algebra/FFT paths), a Windows delay-load failure (0xC06D007F) terminates the process. After installing the PyPI `mkl` package, those two DLLs appear in `<venv>\Library\bin` (on the process PATH) and the risk goes away automatically.
+
+> **To obtain a minimal set of DLLs**: collect the full chain with **`dumpbin /dependents`** — that is the authoritative method. The "file locking" trick (deleting DLLs that are not locked after import) is only a **first pass**: it wrongly removes **delay-loaded/on-demand** DLLs (`mkl_intel_thread` is a typical case: not locked at import, only needed when running ipopt/solve), so always cross-check with dumpbin.
 
 ### 2.4 Pack the Data Files
 
-The `data/` directory (containing `de440s.bsp`, `naif0012.tls`, `tle.txt`) must be included. Copy it from the project root:
-
-```cmd
-xcopy /E /I ..\data ..\pykep\data
-```
+pykep 3.0.1's data files (`de440s.bsp`, `naif0012.tls`, `tle.txt`) are already inside the package directory `pykep\data\` (there is no `data\` at the repository root); `setup.py`'s `"data/*"` carries them into the wheel.
 
 Now the `pykep/` folder is ready to be packaged into a wheel.
 
 ---
 
-##  Step 3: Build PyGMO
+## Step 3: Build PyGMO
 
 PyGMO depends on the `pagmo` C++ library, which is already available in the Conda environment. We can use it directly.
 
@@ -170,17 +173,17 @@ cd pygmo2
 
 ### 3.2 Configure CMake
 
-```cmd
-rmdir /s /q build
-mkdir build
+```powershell
+Remove-Item -Recurse -Force build -ErrorAction SilentlyContinue
+New-Item -ItemType Directory -Path build | Out-Null
 cd build
 
-cmake .. -G "Visual Studio 18 2026" -A x64 -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="%CONDA_PREFIX%\Library" -Dpygmo_BUILD_PYTHON_BINDINGS=ON
+& "$cmake_path" .. -G "Visual Studio 18 2026" -A x64 -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="%CONDA_PREFIX%\Library"
 ```
 
-> **Important**: `-Dpygmo_BUILD_PYTHON_BINDINGS=ON` explicitly enables Python binding generation. (Some versions enable this by default, but it's safer to specify it.)
+> There is **no** `-Dpygmo_BUILD_PYTHON_BINDINGS` option (pygmo2's CMakeLists only has `PYGMO_ENABLE_IPO`; Python bindings build unconditionally). Passing it yields a `Manually-specified variables were not used by the project` warning — just omit it. Only pykep has the `kep3_BUILD_PYTHON_BINDINGS` option; do not mix the two.
 
-CMake will automatically find `pagmo`, `Boost`, `Eigen`, and other dependencies.
+CMake will find `pagmo`, `Boost`, `Eigen`, and other dependencies automatically.
 
 ### 3.3 Compile
 
@@ -189,8 +192,9 @@ cmake --build . --config Release --parallel
 ```
 
 This produces:
+
 - `pygmo/Release/core.cp314-win_amd64.pyd` – the Python extension module
-- `pygmo/_version.py` – the version file
+- `pygmo/_version.py` – the version file (generated **in the build directory**, unlike pykep; it must be copied, see 3.4)
 
 ### 3.4 Prepare the Python Package
 
@@ -211,31 +215,47 @@ Copy required DLLs into a `lib` folder:
 ```cmd
 mkdir ..\pygmo\lib
 copy %CONDA_PREFIX%\Library\bin\pagmo.dll ..\pygmo\lib\
-copy %CONDA_PREFIX%\Library\bin\boost_serialization*.dll ..\pygmo\lib\
+copy %CONDA_PREFIX%\Library\bin\boost_serialization.dll ..\pygmo\lib\
 copy %CONDA_PREFIX%\Library\bin\ipopt-3.dll ..\pygmo\lib\
 copy %CONDA_PREFIX%\Library\bin\nlopt.dll ..\pygmo\lib\
-copy %CONDA_PREFIX%\Library\bin\tbb*.dll ..\pygmo\lib\
+copy %CONDA_PREFIX%\Library\bin\tbb12.dll ..\pygmo\lib\
+copy %CONDA_PREFIX%\Library\bin\tbbmalloc.dll ..\pygmo\lib\
 copy %CONDA_PREFIX%\Library\bin\dmumps.dll ..\pygmo\lib\
 copy %CONDA_PREFIX%\Library\bin\libblas.dll ..\pygmo\lib\
 copy %CONDA_PREFIX%\Library\bin\liblapack.dll ..\pygmo\lib\
-copy %CONDA_PREFIX%\Library\bin\mkl_*.dll ..\pygmo\lib\
+copy %CONDA_PREFIX%\Library\bin\msvcp140.dll ..\pygmo\lib\
+copy %CONDA_PREFIX%\Library\bin\mkl_rt.3.dll ..\pygmo\lib\
 ```
 
-(Again, use `dumpbin` or the locking method to minimize the set.)
+> Note: pygmo does not copy `mkl_intel_thread.3.dll` (the threading layer) — the wheel shipped by this repository is in slim-rt form; the threading layer and `mkl_core`/`libiomp5md` are provided by the optional dependency `mkl>=2026` (see below and Step 5).
+
+The wheel shipped here uses the **slim-rt form**, and MKL is handled as follows:
+
+1. **`mkl_rt.3.dll` must be copied** (26.6MB): `libblas.dll`/`liblapack.dll` are conda's thin forwarding layers and do a runtime `LoadLibrary("mkl_rt.3.dll")` at load time.
+2. **`mkl_intel_thread.3.dll` (threading layer) is not copied**: it and its delay-load dependencies `mkl_core.3.dll`/`mkl_avx2.3.dll`/`mkl_def.3.dll`/`libiomp5md.dll` (~213MB total) are all provided by the optional dependency `pip install "mkl>=2026"` (the DLLs land in `<venv>\Library\bin`, which the wheel's `__init__.py` automatically adds to PATH). Without mkl, ipopt reports `Cannot load mkl_intel_thread.3.dll` early (clear, diagnosable). Do **not** use a wildcard `mkl_*.dll` copy — that would pull 25 MKL DLLs (~600MB!).
+3. **Also copy ipopt's proprietary dependencies (asl + Fortran/OpenMP runtime, 5.6MB)**: `ipopt-3.dll` delay-loads them; if missing, ipopt crashes at runtime (0xC06D007F). The original document did not mention them at all; they are required:
+   ```cmd
+   copy %CONDA_PREFIX%\Library\bin\asl.dll ..\pygmo\lib\
+   copy %CONDA_PREFIX%\Library\bin\asl2.dll ..\pygmo\lib\
+   copy %CONDA_PREFIX%\Library\bin\libgomp-1.dll ..\pygmo\lib\
+   copy %CONDA_PREFIX%\Library\bin\libomp.dll ..\pygmo\lib\
+   copy %CONDA_PREFIX%\Library\bin\libquadmath-0.dll ..\pygmo\lib\
+   copy %CONDA_PREFIX%\Library\bin\libgcc_s_seh-1.dll ..\pygmo\lib\
+   copy %CONDA_PREFIX%\Library\bin\libwinpthread-1.dll ..\pygmo\lib\
+   ```
+4. **The extra VC++ runtime parts (msvcp140_1/2, vcruntime140_1, vcomp/vcamp/concrt140) do not need to be copied** — Windows' VC++ Redistributable provides them system-wide.
+
+(Again, use `dumpbin` or the locking method to minimize the set — but always cross-check the locking method with dumpbin, see 2.3.)
 
 ---
 
-##  Step 4: Create the Wheels
-
-Now that the `pykep/` and `pygmo/` directories are complete with all binaries and Python files, we can package them.
+## Step 4: Create the Wheels
 
 ### 4.1 Create `setup.py` for PyKEP
 
-Place a `setup.py` in **the project root directory** (the directory that contains the `pykep/` folder). For example, if your project root is `D:\code\pykep\` and it contains `pykep/` and `data/` as subdirectories, then `setup.py` goes into `D:\code\pykep\`.
+Place a `setup.py` in **the project root directory**. Run `python setup.py bdist_wheel` from this same directory.
 
-Run `python setup.py bdist_wheel` from this same directory.
-
-A minimal `setup.py` is:
+Complete setup.py (with vendored heyoka and **recursive package_data** — a plain glob is not recursive; without listing the second-level subdirectories, `heyoka` raises circular-import errors):
 
 ```python
 from setuptools import setup, find_packages
@@ -250,6 +270,10 @@ setup(
             "lib/*",
             "_vendor/*",
             "_vendor/heyoka/*",
+            # setuptools glob is not recursive: list second-level subdirs explicitly,
+            # otherwise model/__init__.py and callback/__init__.py are lost -> heyoka circular import
+            "_vendor/heyoka/model/*",
+            "_vendor/heyoka/callback/*",
             "trajopt/gym/tops/*.json",
             "data/*",
         ],
@@ -269,11 +293,26 @@ setup(
 )
 ```
 
-> **Important**: `pygmo` is listed as a dependency, but the official PyPI does **not** provide a Windows wheel. Users must install the provided `pygmo` wheel **before** installing `pykep`.
+> **Important**: `pygmo` is listed as a dependency, but the official PyPI does not provide a Windows wheel. Users must install the provided `pygmo` wheel before installing `pykep`.
+
+> Required patch: DLL search path in `__init__.py`. Windows has no RPATH and Python does not search package-internal subdirectories by default; without the patch, a wheel imported on a clean machine raises `ImportError: DLL load failed while importing core`. Add this at the top of `pykep/__init__.py` before building the wheel:
+
+```python
+import os
+os.add_dll_directory(os.path.join(os.path.dirname(__file__), "lib"))
+# vendored heyoka injected into sys.path:
+import sys as _sys
+_vendor_dir = os.path.join(os.path.dirname(__file__), "_vendor")
+if _vendor_dir not in _sys.path:
+    _sys.path.insert(0, _vendor_dir)
+```
+
+> Also copy `_vendor\heyoka\` (31 files) from the conda env's `heyoka.py` into the package (without it: `ModuleNotFoundError: No module named 'heyoka'`).
 
 ### 4.2 Build the Wheel
 
 ```cmd
+pip install setuptools wheel   # not in the yml; install first
 python setup.py bdist_wheel
 ```
 
@@ -281,7 +320,7 @@ The wheel will be created in the `dist/` subdirectory.
 
 ### 4.3 Repeat for PyGMO
 
-Similarly, create a `setup.py` for PyGMO in its own project root directory:
+setup.py (with the `mkl` extra and `msvcp140.dll` already in lib):
 
 ```python
 from setuptools import setup, find_packages
@@ -301,11 +340,36 @@ setup(
     extras_require={
         "plot": ["matplotlib>=3.0"],
         "graph": ["networkx>=2.5"],
-        "all": ["matplotlib>=3.0", "networkx>=2.5"],
+        # optional MKL: enables the full ipopt + BLAS/LAPACK performance
+        # (PyPI has win_amd64 wheels, same distribution as conda; after install
+        # the DLLs land in <venv>\Library\bin and __init__ picks them up)
+        "mkl": ["mkl>=2026"],
+        "all": ["matplotlib>=3.0", "networkx>=2.5", "mkl>=2026"],
     },
     python_requires="==3.14.*",
     has_ext_modules=lambda: True,
 )
+```
+
+> **PyGMO's `__init__.py` patch is more involved than pykep's; two things are required:**
+> 1. `os.add_dll_directory(lib)` — covers only **runtime LoadLibrary** (the MKL dispatcher chain);
+> 2. **prepend `pygmo\lib` to `os.environ["PATH"]`** — because `asl.dll` / the Fortran runtime are **MSVC delay-load**, which only recognizes the standard search path; `add_dll_directory` does **not** cover them. Without this step, ipopt crashes at runtime (0xC06D007F).
+> 3. Detect the pip-installed mkl: `<venv>\Library\bin` is **two** `dirname` steps above `site-packages` (`dirname(dirname(site_packages))`); if it exists, prepend it to PATH as well.
+
+```python
+import os as _os
+_pkg_dir = _os.path.dirname(__file__)
+_lib_dir = _os.path.join(_pkg_dir, "lib")
+_os.add_dll_directory(_lib_dir)
+_env = _lib_dir + _os.pathsep + _os.environ.get("PATH", "")
+_site = _os.path.dirname(_pkg_dir)
+_venv = _os.path.dirname(_os.path.dirname(_site))
+_lb = _os.path.join(_venv, "Library", "bin")
+if _os.path.isdir(_lb):
+    try: _os.add_dll_directory(_lb)
+    except Exception: pass
+    _env = _lb + _os.pathsep + _env
+_os.environ["PATH"] = _env
 ```
 
 Build:
@@ -316,12 +380,14 @@ python setup.py bdist_wheel
 
 ---
 
-##  Step 5: Test the Wheels
+## Step 5: Test the Wheels
+
+The verification environment must be **clean**: use a **system Python (not conda)** and make sure the process PATH has **no leftover conda entries** (e.g. `py -3.14` with the `conda|miniconda` entries stripped from PATH in PowerShell). Otherwise conda's `Library\bin` masks missing DLLs and a "pass" does not prove the wheel is self-contained.
 
 Create a fresh virtual environment and install the wheels in the correct order:
 
 ```cmd
-python -m venv testenv
+py -3.14 -m venv testenv
 testenv\Scripts\activate
 pip install pygmo-2.19.8-cp314-cp314-win_amd64.whl
 pip install pykep-3.0.1-cp314-cp314-win_amd64.whl
@@ -331,61 +397,134 @@ Run the test suites:
 
 ```python
 import pykep
-pykep.test.run_test_suite()   # Should pass 89/89 tests
+pykep.test.run_test_suite()   # should pass 89/89 tests (verified on a clean machine)
 
 import pygmo
-pygmo.test.run_test_suite()   # Should pass all core tests
+pygmo.test.run_test_suite()   # see the MKL behavior table below
 ```
 
-> **Note**: The `free_form` test will error if `networkx` is not installed; this is expected because it's optional. Install `networkx` to make it pass:
+> **Note**: The `free_form` test will error if `networkx` is not installed; that is expected because it is optional. Install `networkx` to make it pass:
 > ```bash
 > pip install networkx
 > ```
 
+**MKL behavior (delivered wheels on a clean machine)**:
+
+| Scenario | import | pygmo suite `ipopt_test_case` |
+|---|---|---|
+| Delivered wheel (no mkl) | ✅ | fails when reaching ipopt (no result line for that test, no suite summary appears; may terminate the interpreter) — expected, not a wheel defect |
+| Delivered wheel + `pip install "mkl>=2026"` | ✅ |  PASSED (Solve_Succeeded) |
+
+That is: without `mkl`, ipopt is unavailable, which is **expected** (the MKL threading layer/core come from the optional dependency); with `mkl`, ipopt works fully. Incidentally, on machines with `mkl` installed, pykep's `mkl_core`/`libiomp5md` delay-load risk (2.3) is also eliminated automatically.
+
 ---
 
-##  Troubleshooting
+## Troubleshooting
 
-### CMake cannot find SPICE or GMP
+### CMake: `Could NOT find mp++_GMP`
 
-Manually set the paths as shown in the configuration steps above. Ensure the `cspice` and `gmp` packages are installed in Conda:
-
-```cmd
-conda install -c conda-forge cspice gmp
+**Symptom**:
+```
+Could NOT find mp++_GMP (missing: MPPP_GMP_INCLUDE_DIR MPPP_GMP_LIBRARY)
 ```
 
-### Missing DLLs at runtime
-
-Use `dumpbin /dependents core.pyd` to list required DLLs. Copy any missing ones from `%CONDA_PREFIX%\Library\bin` into the `lib` folder.
-
-### The `pykep` wheel fails to import due to missing `pygmo`
-
-PyKEP depends on PyGMO. On Windows, you must install the provided `pygmo` wheel first:
-
+**Solution**:
 ```bash
-pip install pygmo-2.19.8-cp314-cp314-win_amd64.whl
-pip install pykep-3.0.1-cp314-cp314-win_amd64.whl
+conda install -c conda-forge gmp mp++
+```
+Or manually specify:
+```
+-DGMP_INCLUDE_DIR="%CONDA_PREFIX%\Library\include" -DGMP_LIBRARY="%CONDA_PREFIX%\Library\lib\gmp.lib"
 ```
 
-### `ModuleNotFoundError: No module named 'pykep._version'`
+### CMake: `Could NOT find cspice`
 
-The `_version.py` file was not copied during preparation. Copy it from `build/pykep/` or `build/pygmo/`:
-
-```cmd
-copy build\pykep\_version.py pykep\
+**Symptom**:
 ```
+Could not find a package configuration file provided by "cspice"
+```
+
+**Solution**:
+```bash
+conda install -c conda-forge cspice
+-Dcspice_DIR="%CONDA_PREFIX%\Library\lib\cmake\cspice"
+```
+
+### CMake: `python=OFF` in summary
+
+**Symptom**: CMake summary shows `python=OFF` and no `core.pyd` is generated.
+
+**Solution**: Add `-Dkep3_BUILD_PYTHON_BINDINGS=ON` to your CMake command.
+
+### CMake: `Manually-specified variables were not used by the project: pygmo_BUILD_PYTHON_BINDINGS`
+
+**Symptom**: Configuring pygmo with `-Dpygmo_BUILD_PYTHON_BINDINGS=ON` prints that warning.
+
+**Cause**: pygmo2's CMakeLists has no such option (only `PYGMO_ENABLE_IPO`); the Python bindings build unconditionally.
+
+**Solution**: Drop that parameter; it does not affect the build.
+
+### CMake: `Visual Studio 18 2026` not recognized
+
+**Symptom**:
+```
+CMake Error: Could not create named generator Visual Studio 18 2026
+```
+
+**Solution**: Your CMake is too old (need ≥ 4.2.0) — but the most common cause is using the conda env's cmake (`kep3_devel.yml` pins `cmake>=3.28,<3.31`; the 3.30.5 inside the env does not know the new generator). Always configure with the winlibs CMake **full path**:
+
+```powershell
+& "$cmake_path" .. -G "Visual Studio 18 2026" -A x64 ...
+```
+
+### `'cl' is not recognized as an internal or external command`
+
+**Symptom**:
+```
+'cl' is not recognized as an internal or external command, operable program or batch file.
+```
+
+**Cause / Solution**: Configuring and building do **not** need `cl` on PATH — CMake's VS generator locates MSVC itself (via vswhere/MSBuild), so a plain PowerShell/terminal can run every step in this document. Only when using `dumpbin` do you need the VS environment:
+> ```cmd
+> cmd /c "call vcvars64.bat && dumpbin /dependents core.pyd"
+> ```
+
+### Python binding imports fail after build
+
+**Symptom**: After copying `core.pyd` and the DLLs, `import pykep` fails with `DLL load failed`.
+
+**Solution**:
+1. Use `dumpbin /dependents core.pyd` to list all required DLLs.
+2. Copy any missing DLLs from `%CONDA_PREFIX%\Library\bin` into your `lib/` folder.
+3. Make sure `__init__.py` has the DLL search patch (add_dll_directory + PATH prepend, see 4.3).
+
+> Note: dumpbin's `Image has the following delay load dependencies` section is also required (ipopt → asl/Fortran; mkl_intel_thread → mkl_core/libiomp5md). The "file locking" method (deleting unlocked DLLs after import) wrongly removes these delay-load DLLs — it is only a first pass and must be cross-checked with dumpbin.
+
+### `_version.py` after build
+
+**Symptom**: `ModuleNotFoundError: No module named 'pykep._version'` (or `pygmo._version`).
+
+**Solution**: The two differ:
+- **pykep**: `_version.py` is generated by `configure_file` **directly in the source directory `pykep\`** (no copy needed);
+- **pygmo**: generated in **`build\pygmo\`**, so copy it: `copy build\pygmo\_version.py ..\pygmo\`.
+
+### `ModuleNotFoundError: No module named 'heyoka'` / heyoka circular import
+
+Missing vendored heyoka, or package_data is not recursive. The former: copy `_vendor\heyoka\` and inject it into sys.path; the latter: add `"_vendor/heyoka/model/*"`, `"_vendor/heyoka/callback/*"`. **"Circular import" usually means a dependency file is missing.**
 
 ### The wheel is too large
 
 The `de440s.bsp` file is about 32 MB. If you don't need SPICE support, you can omit it, but then `udpla.de440s` will not work.
 
+Most of pygmo's size comes from MKL: `mkl_rt.3.dll` (26.6MB) must be kept; do **not** include the threading layer/core/avx2/def/iomp (~213MB) — provide them on demand with `pip install "mkl>=2026"`. The delivered pygmo wheel (slim-rt form) is about 17.5MB in practice.
+
 ### `vcpkg manifest was disabled` warning
 
-This is harmless – it does not affect the build. You can safely ignore it.
+This is harmless — it does not affect the build. You can safely ignore it.
 
 ---
 
-##  References
+## References
 
 - [PyKEP GitHub](https://github.com/esa/pykep)
 - [PyGMO GitHub](https://github.com/esa/pygmo2)
