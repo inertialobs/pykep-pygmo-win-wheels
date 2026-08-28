@@ -1,2 +1,209 @@
-# pykep-pygmo-win-wheels
-Windows x64 wheels for ESA's PyKEP and PyGMO (Python 3.14). Includes all DLLs.
+# Windows Pre-built Wheels for PyKEP & PyGMO
+
+[![License](https://img.shields.io/badge/License-MPL--2.0-blue.svg)](https://www.mozilla.org/en-US/MPL/2.0/)
+[![Python](https://img.shields.io/badge/python-3.14-blue)](https://www.python.org/)
+[![Platform](https://img.shields.io/badge/platform-Windows%20x64-lightgrey)](https://www.microsoft.com/en-us/windows)
+
+> **Community-maintained Windows wheels** for [PyKEP](https://github.com/esa/pykep) and [PyGMO](https://github.com/esa/pygmo2).  
+> *Not an ESA official release.*
+
+Pre-compiled binary wheels for **Windows 64-bit** – no C++ compiler  or conda required. Just `pip install` and start using it.
+
+
+##  Features
+
+-  **Self-contained wheels** – includes all required DLLs
+-  **No source compilation** – works on clean Windows systems
+-  **All dependencies vendored** – including `heyoka`, SPICE kernels, etc.
+-  **Minimal Python dependencies** – auto-installed via pip
+
+##  Download & Install
+
+### 1. Check System Requirements
+
+Before installing, ensure your system meets the following prerequisites:
+
+| Requirement | Check Command |
+|-------------|---------------|
+| **Windows 10/11 (64-bit)** | System settings → About |
+| **Python 3.14 (64-bit)** | `python --version` |
+| **Visual C++ Redistributable** | Check in "Apps & features" for "Microsoft Visual C++ Redistributable" |
+
+```bash
+# Verify Python version and architecture
+python --version
+# Should output: Python 3.14.x
+
+python -c "import struct; print(struct.calcsize('P') * 8)"
+# Should output: 64
+```
+
+If you don't have Python 3.14 or the VC++ runtime installed:
+
+- **Python 3.14**: Download from [python.org](https://www.python.org/downloads/)
+- **VC++ Redistributable**: Download from [Microsoft](https://aka.ms/vs/17/release/vc_redist.x64.exe)
+
+### 2. Download the wheels from [Releases](https://github.com/your-username/windows-pykep-pygmo-build/releases)
+
+| Package | Version | File |
+|---------|---------|------|
+| PyKEP | 3.0.1 | `pykep-3.0.1-cp314-cp314-win_amd64.whl` |
+| PyGMO | 2.19.8 | `pygmo-2.19.8-cp314-cp314-win_amd64.whl` |
+
+### 3. Install using pip
+
+> **Important**: PyKEP depends on `pygmo`. On Windows, you must install the provided `pygmo` wheel first, then install `pykep`.
+
+```bash
+# Step 1: Install PyGMO
+pip install pygmo-2.19.8-cp314-cp314-win_amd64.whl
+
+# Step 2: Install PyKEP
+pip install pykep-3.0.1-cp314-cp314-win_amd64.whl
+```
+
+### 4. Verify Installation
+
+```python
+import pykep as pk
+import pygmo as pg
+
+print(f"PyKEP version: {pk.__version__}")  # 3.0.1
+print(f"PyGMO version: {pg.__version__}")  # 2.19.8
+```
+
+### 5. Try SPICE functionality (PyKEP)
+
+```python
+import pykep as pk
+
+ud = pk.udpla.de440s("EARTH", "ECLIPJ2000", "SSB")
+earth = pk.planet(ud)
+print(earth)
+```
+##  Dependencies
+
+To maintain consistency with the official Linux wheels, the dependency list for the Windows wheel follows the same `install_requires` definition as the upstream projects.
+
+### Automatically installed via pip
+
+| Package | Required by | Notes |
+|---------|-------------|-------|
+| `numpy` | Both | Core numerical library |
+| `scipy` | Both | Required by PyKEP and PyGMO |
+| `matplotlib` | PyKEP | Plotting utilities |
+| `sgp4` | PyKEP | TLE propagation |
+| `spiceypy` | PyKEP | SPICE toolkit bindings |
+| `pygmo` | PyKEP | PyKEP depends on PyGMO |
+| `cloudpickle` | PyKEP (vendored heyoka) | Serialization for heyoka |
+| `certifi` | PyKEP (vendored heyoka) | SSL certificates for heyoka |
+
+### Optional Dependencies (PyGMO)
+
+| Package | Usage | Install command |
+|---------|-------|-----------------|
+| `networkx` | `free_form` topology | `pip install networkx` |
+| `matplotlib` | Plotting utilities | `pip install matplotlib` |
+
+
+##  Test Status
+
+| Package | Test Suite | Result |
+|---------|------------|--------|
+| **PyKEP** | `pykep.test.run_test_suite()` |  **89/89 passed** on Windows 10/11 |
+| **PyGMO** | `pygmo.test.run_test_suite()` |  **All core tests passed** |
+
+> **Note**: The PyGMO `free_form` topology test (`free_form_test_case`) requires `networkx`, which is not declared as a dependency in the official PyGMO metadata (it is optional). This matches the official Linux wheel behavior. After `networkx` is installed, all tests will be passed.
+
+
+##  Build & Test Environment
+
+| Item | Details |
+|------|---------|
+| **Build Host** | Windows 11 Home 25H2 (x64)|
+| **Build Tools** | Visual Studio 2026 Build Tools (MSVC v19.51), CMake 4.4.2, Conda |
+| **Test System 1** | Windows 10 LTSC 1809 (Hyper‑V) – clean Python 3.14 venv |
+| **Test System 2** | Windows 11 Home 25H2 – clean Python 3.14 venv |
+| **Python Version** | CPython 3.14.7 (64-bit) |
+
+All wheels were verified in **fresh virtual environments** (`python -m venv`) on both Windows 10 and Windows 11.
+
+
+##  Documentation
+
+- **Build from source**: See [`BUILD.md`](BUILD.md) for the complete step-by-step guide
+
+- **Troubleshooting**: Check [`troubleshooting.md`](troubleshooting.md)
+<!---
+- **Environment setup**: See [`docs/windows-requirements.md`](docs/windows-requirements.md)
+!--->
+
+### Quick Links
+- [PyKEP Official Docs](https://esa.github.io/pykep/)
+- [PyGMO Official Docs](https://esa.github.io/pygmo2/)
+- [SPICE Toolkit](https://naif.jpl.nasa.gov/naif/)
+
+
+##  Important Notes
+
+### Python Version Compatibility
+These wheels are **strictly for CPython 3.14 (64-bit)**. They will not work with Python 3.13, 3.15, or 32-bit Python.
+
+### System Architecture
+- **x64 (AMD64) only** – no x86/32-bit support
+ARM64 is not supported at this time (test hardware not available –can I borrow an ARM device from ESA? \doge)
+
+### Installation Order
+- PyKEP depends on PyGMO. On Windows, you must install the provided `pygmo` wheel **before** installing `pykep`.
+
+### Third-Party Licenses
+This repository contains:
+- **PyKEP** / **PyGMO** – [MPL-2.0](https://www.mozilla.org/en-US/MPL/2.0/)
+- **heyoka** – [MPL-2.0](https://www.mozilla.org/en-US/MPL/2.0/)
+- **CSPICE** – [NAIF JPL](https://naif.jpl.nasa.gov/naif/copyright.html) (free for scientific use)
+
+All bundled binaries retain their original license notices.
+
+
+##  Getting Help
+
+If you encounter issues:
+
+1. **Check the FAQ**: [`troubleshooting.md`](troubleshooting.md)
+2. **Open an Issue**: Use the [GitHub Issues](https://github.com/your-username/windows-pykep-pygmo-build/issues) page
+3. **Include details**: Python version, Windows version, full error traceback
+
+
+##  Contributing
+
+While this repository primarily serves as a distribution channel, contributions are welcome!
+
+### How to help
+- **Test** – Try the wheels on different Windows versions and report results
+- **Document** – Improve build instructions or add examples
+- **Build for other Python versions** – 3.12, 3.13, 3.15 if possible
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for details.
+
+
+##  License
+
+This project is licensed under the **MPL-2.0** license – the same as the upstream projects. See the [`LICENSE`](LICENSE) file for details.
+
+
+##  Acknowledgements
+
+- **ESA Advanced Concepts Team** – For creating PyKEP and PyGMO
+- **NAIF/JPL** – For the SPICE toolkit and DE440 ephemeris
+- All upstream contributors and maintainers
+
+
+##  Support
+
+If this repository helped you, consider:
+-  Starring the repo
+-  Linking it in related discussions/issues
+-  Sharing your experience with the community
+
+
+*Last updated: 2026-08-27 | Built for Python 3.14 on Windows x64*
