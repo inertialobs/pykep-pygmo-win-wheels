@@ -44,21 +44,23 @@ If you don't have Python 3.14 or the VC++ runtime installed:
 
 ### 2. Download the wheels from [Releases](https://github.com/NonInertialObserver/pykep-pygmo-win-wheels/releases)
 
-| Package | Version | File |
-|---------|---------|------|
-| PyKEP | 3.0.1 | `pykep-3.0.1-cp314-cp314-win_amd64.whl` |
-| PyGMO | 2.19.8 | `pygmo-2.19.8-cp314-cp314-win_amd64.whl` |
+| Package | File |
+|---------|------|
+| PyKEP | `pykep-{version}-cp314-cp314-win_amd64.whl` |
+| PyGMO | `pygmo-{version}-cp314-cp314-win_amd64.whl` |
+
+> `{version}` is the release you downloaded — the exact filenames are listed on the [Releases](https://github.com/NonInertialObserver/pykep-pygmo-win-wheels/releases) page.
 
 ### 3. Install using pip
 
 > **Important**: PyKEP depends on `pygmo`. On Windows, you must install the provided `pygmo` wheel **first**, then install `pykep`. Installing `pykep` alone makes pip try to build `pygmo` from its PyPI source tarball, which fails on Windows.
 
 ```bash
-# Step 1: Install PyGMO
-pip install pygmo-2.19.8-cp314-cp314-win_amd64.whl
+# Step 1: install the downloaded PyGMO wheel
+pip install pygmo-{version}-cp314-cp314-win_amd64.whl
 
-# Step 2: Install PyKEP
-pip install pykep-3.0.1-cp314-cp314-win_amd64.whl
+# Step 2: install the downloaded PyKEP wheel
+pip install pykep-{version}-cp314-cp314-win_amd64.whl
 ```
 
 ### 4. Verify Installation
@@ -67,8 +69,8 @@ pip install pykep-3.0.1-cp314-cp314-win_amd64.whl
 import pykep as pk
 import pygmo as pg
 
-print(f"PyKEP version: {pk.__version__}")  # 3.0.1
-print(f"PyGMO version: {pg.__version__}")  # 2.19.8
+print(f"PyKEP version: {pk.__version__}")
+print(f"PyGMO version: {pg.__version__}")
 ```
 
 ### 5. Try SPICE functionality (PyKEP)
@@ -117,10 +119,10 @@ The `heyoka` integration is vendored inside the wheel, so no additional dependen
 
 | Suite | Status | Notes |
 |-------|--------|-------|
-| PyKEP | 89/89 tests pass | Verified on a clean Windows 10/11 venv (system Python 3.14, no conda) |
-| PyGMO | Core tests pass | `free_form` needs `networkx`; `ipopt` needs the optional `mkl` package (see above) |
+| PyKEP | Full upstream test suite passes | Verified on a clean Windows 11 venv (system Python 3.14, no conda) |
+| PyGMO | Full upstream test suite passes | Verified on a clean system Python 3.14 venv with `networkx` + `mkl`; `free_form` needs `networkx`, `ipopt` needs the optional `mkl` package (see above) |
 
-> **Note**: The PyGMO `free_form` topology test (`free_form_test_case`) requires `networkx`, which is not declared as a dependency in the official PyGMO metadata (it is optional). This matches the official Linux wheel behavior. After `networkx` is installed, all tests pass.
+> **Note**: The PyGMO `free_form` topology test (`free_form_test_case`) requires `networkx`, which is not declared as a dependency in the official PyGMO metadata (it is optional). This matches the official Linux wheel behavior. After `networkx` (and `mkl` for ipopt) is installed, all tests pass.
 
 ## Testing on a Clean Machine
 
@@ -133,12 +135,11 @@ To ensure the wheels work on machines without conda, test using a **clean Python
 | Item | Details |
 |------|---------|
 | **Build Host** | Windows 11 Home 25H2 (x64) |
-| **Build Tools** | Visual Studio 2026 Build Tools (MSVC v19.51), winlibs CMake 4.4.2, Conda |
-| **Test System 1** | Windows 10 LTSC 1809 (Hyper-V) – clean Python 3.14 venv |
-| **Test System 2** | Windows 11 Home 25H2 – clean Python 3.14 venv |
-| **Python Version** | CPython 3.14.7 (64-bit) |
+| **Build Tools** | Visual Studio 2026 Build Tools, winlibs CMake (≥4.2), Conda |
+| **Test System** | Windows 11 Home 25H2 – clean Python 3.14 venv (PATH stripped of conda) |
+| **Python Version** | CPython 3.14.x (64-bit) |
 
-All wheels were verified in **fresh virtual environments** (`python -m venv`) on both Windows 10 and Windows 11.
+All wheels were verified in a **fresh virtual environment** (`python -m venv`) on the build host.
 
 ---
 
@@ -220,4 +221,4 @@ If this repository helped you, consider:
 
 ---
 
-*Last updated: 2026-08-28 | Built for Python 3.14 on Windows x64*
+*Built for Python 3.14 on Windows x64*

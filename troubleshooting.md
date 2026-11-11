@@ -15,10 +15,10 @@ This document covers common issues when **installing and running** the pre-built
 
 ### `ERROR: pygmo ... does not appear to be a Python project`
 
-**Symptom**: When you run `pip install pykep-3.0.1-cp314-cp314-win_amd64.whl` directly (without first installing the provided `pygmo` wheel), you see:
+**Symptom**: When you run `pip install pykep-{version}-cp314-cp314-win_amd64.whl` directly (without first installing the provided `pygmo` wheel), you see:
 ```
-Collecting pygmo (from pykep==3.0.1)
-  Downloading pygmo-v2.19.0.tar.gz (3.0 MB)
+Collecting pygmo (from pykep=={version})
+  Downloading pygmo-v{version}.tar.gz (...) 
 ERROR: pygmo from ... does not appear to be a Python project: neither 'setup.py' nor 'pyproject.toml' found.
 ```
 
@@ -33,10 +33,10 @@ This is not a bug in these wheels – it's an upstream issue.
 
 ```bash
 # 1. Install pygmo first
-pip install pygmo-2.19.8-cp314-cp314-win_amd64.whl
+pip install pygmo-{version}-cp314-cp314-win_amd64.whl
 
 # 2. Then install pykep
-pip install pykep-3.0.1-cp314-cp314-win_amd64.whl
+pip install pykep-{version}-cp314-cp314-win_amd64.whl
 ```
 
 > If you only want to check pykep itself, you can use `pip install --no-deps` to skip dependency resolution; but pykep's `trajopt` module still needs pygmo at runtime.
@@ -82,7 +82,7 @@ ImportError: DLL load failed while importing core: The specified module could no
 
 3. **`os.add_dll_directory` not called / wheel without the patch**
    Ensure the `__init__.py` file inside the package contains the DLL loading code. (Included in our wheels by default.)
-   > `add_dll_directory` alone is **not enough** for pygmo: `asl.dll` / the Fortran runtime are MSVC **delay-load**, which only recognizes the standard search path — `__init__.py` must also **prepend `pygmo\lib`** (and the detected `<venv>\Library\bin`) to `PATH`. See [BUILD.md](BUILD.md) §4.3.
+   > `add_dll_directory` alone is **not enough** for pygmo: delay-loaded DLLs (notably the MKL threading/core chain) only recognize the standard search path — `__init__.py` must also **prepend `pygmo\lib`** (and the detected `<venv>\Library\bin`) to `PATH`. (With current ipopt builds the old ASL/Fortran delay-load chain is gone, but the MKL runtime still needs the PATH entry.) See [BUILD.md](BUILD.md) §4.3.
 
 4. **Missing `mkl_rt.3.dll` (pygmo, required at import)**
    On a clean environment (no conda, no `mkl_rt`), even `import pygmo` fails: `libblas.dll`/`liblapack.dll` are conda's thin forwarding layers and do a runtime `LoadLibrary("mkl_rt.3.dll")` **at load time**. The shipped wheel includes `mkl_rt`, so import works; when minimizing manually, **must keep `mkl_rt`**.
@@ -175,6 +175,22 @@ conda install -c conda-forge cspice
 
 **Solution**: Drop that parameter; it does not affect the build.
 
+### CMake: pygmo requires a newer pagmo
+
+**Symptom**:
+```
+CMake Error at CMakeLists.txt:... (message):
+  The minimum pagmo version required by pygmo is {required}, but version {found} was found instead.
+```
+
+**Cause**: `kep3_devel` may ship an older `pagmo`/`pagmo-devel` than the pygmo release requires.
+
+**Solution**: Build pygmo in a dedicated environment with a recent pagmo instead of upgrading `kep3_devel` (see BUILD.md Step 3):
+
+```cmd
+conda create -n pygmo_devel -c conda-forge -y python=3.14 pagmo pagmo-devel pybind11 mkl tbb
+```
+
 ### CMake: `Visual Studio 18 2026` not recognized
 
 **Symptom**:
@@ -182,7 +198,7 @@ conda install -c conda-forge cspice
 CMake Error: Could not create named generator Visual Studio 18 2026
 ```
 
-**Solution**: Your CMake is too old (need ≥ 4.2.0) — but the **most common cause is using the conda env's cmake**: `kep3_devel.yml` pins `cmake>=3.28,<3.31` (the 3.30.5 inside the env does not know this generator). Always configure with the winlibs CMake **full path**, not with the activated env's `cmake`:
+**Solution**: Your CMake is too old (need ≥ 4.2.0) — but the **most common cause is using the conda env's cmake**: `kep3_devel.yml` pins an older CMake that does not know this generator. Always configure with the winlibs CMake **full path**, not with the activated env's `cmake`:
 
 ```powershell
 & "$cmake_path" .. -G "Visual Studio 18 2026" -A x64 ...
@@ -210,7 +226,7 @@ Configuring and building **do not** need `cl` on PATH — CMake's VS generator l
 2. Copy any missing DLLs from `%CONDA_PREFIX%\Library\bin` into your `lib/` folder.
 3. Ensure `__init__.py` has the DLL search patch (add_dll_directory + PATH prepend, see BUILD.md).
 
-> Note: dumpbin's `Image has the following delay load dependencies` section must also be treated as required (ipopt → asl/Fortran; mkl_intel_thread → mkl_core/libiomp5md). The **"file locking" method** (deleting unlocked DLLs after import) wrongly removes these delay-load DLLs — it is only a first pass and must be cross-checked with dumpbin.
+> Note: dumpbin's `Image has the following delay load dependencies` section must also be treated as required (for pygmo the remaining chain is `mkl_rt`/`mkl_intel_thread` → `mkl_core`/`libiomp5md`; for pykep, `mkl_intel_thread` → `mkl_core`/`libiomp5md`). The **"file locking" method** (deleting unlocked DLLs after import) wrongly removes these delay-load DLLs — it is only a first pass and must be cross-checked with dumpbin.
 
 ### `_version.py` after build
 
@@ -273,7 +289,7 @@ Intel oneMKL FATAL ERROR: Cannot load mkl_intel_thread.3.dll.
 libblas/liblapack (thin forwarding layer) → mkl_rt.3.dll (dispatcher, at import) → at runtime LoadLibrary mkl_intel_thread.3.dll (threading layer, delay-load mkl_core.3.dll + libiomp5md.dll)
 ```
 
-The shipped **pygmo** wheel includes `mkl_rt.3.dll` (the dispatcher), but does **not** bundle the threading layer `mkl_intel_thread.3.dll` or its delay-load dependencies `mkl_core.3.dll` / `libiomp5md.dll` (provided by the optional `mkl` package; the pykep wheel does bundle the threading layer — its delay-load risk is covered in the next section). Therefore, without `mkl`:
+The shipped **pygmo** wheel includes `mkl_rt.3.dll` (the dispatcher), but does **not** bundle the threading layer `mkl_intel_thread.3.dll` or its delay-load dependencies `mkl_core.3.dll` / `libiomp5md.dll` (provided by the optional `mkl` package; the pykep wheel does bundle the threading layer — its delay-load risk is covered in the next section). Note that current pygmo builds no longer need the old ipopt ASL/Fortran runtime DLLs, so the bundled `lib/` is smaller than in older releases. Therefore, without `mkl`:
 - `import` works (the dispatcher is present);
 - when reaching ipopt, the process **fails at that test** (no result line for that test, and the following suite summary does not appear; in some cases the process terminates silently without an error message).
 
@@ -281,7 +297,7 @@ The shipped **pygmo** wheel includes `mkl_rt.3.dll` (the dispatcher), but does *
 ```bash
 pip install "mkl>=2026"
 ```
-After that, the ipopt test **PASSED** (Solve_Succeeded, verified on a clean environment).
+After that, the ipopt test **PASSED** (Solve_Succeeded, verified on a clean environment). With `mkl` + `networkx` the complete pygmo suite passes.
 
 | mkl installed? | import | ipopt_test_case |
 |---|---|---|
@@ -297,7 +313,7 @@ After that, the ipopt test **PASSED** (Solve_Succeeded, verified on a clean envi
 **Background**: `kep3.dll` has a **PE direct dependency** on `mkl_intel_thread.3.dll` (pykep's own dependency, not pygmo's); that DLL itself delay-loads `mkl_core.3.dll` + `libiomp5md.dll`, **which are not in the pykep wheel**.
 
 **Current status**:
-- `import pykep` works; the official 89-item test suite passes **89/89 with no anomaly** (delay-load is lazy; the tests never reach the mkl_core path).
+- `import pykep` works; the full official test suite passes **with no anomaly** (delay-load is lazy; the tests never reach the mkl_core path).
 - **Risk** (real but not triggered): user code that calls a routine falling through to mkl_core (some linear-algebra/FFT paths) triggers the Windows delay-load failure exception (**0xC06D007F**) and the process terminates.
 
 **Mitigation**:
@@ -305,9 +321,9 @@ After that, the ipopt test **PASSED** (Solve_Succeeded, verified on a clean envi
 - Users without `mkl`: the current test paths all pass; the risk only exists in uncovered call paths;
 - Full defense: add `mkl_core.3.dll` (68.6MB) + `libiomp5md.dll` (0.15MB) to the pykep wheel (+68.8MB); this is currently not done.
 
-### PyKEP: all 89 tests pass
+### PyKEP: full test suite passes
 
-`pykep.test.run_test_suite()` passes **89/89** tests (verified on a clean environment). If any fail, ensure all dependencies (SPICE, etc.) are correctly installed and the Python deps (numpy/scipy/matplotlib/sgp4/spiceypy/pygmo/cloudpickle/certifi) are present.
+`pykep.test.run_test_suite()` passes the **full upstream suite** (verified on a clean environment). If any fail, ensure all dependencies (SPICE, etc.) are correctly installed and the Python deps (numpy/scipy/matplotlib/sgp4/spiceypy/pygmo/cloudpickle/certifi) are present.
 
 ---
 
